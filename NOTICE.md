@@ -24,8 +24,14 @@ No third-party GEM license applies.
 4. **What IS solid:** a *real* biomass reaction (`BIOMASS`, SBO:0000629) with
    real precursors + GAM; a *verifiable* carbon guardrail (closing 5
    organic-carbon exchanges collapses growth to 0, drop ~100%); genuine GPR
-   rules (17 genes); and the native *A. niger* phosphate-switch phenotype
-   (phosphate depletion routes carbon to citrate).
+   rules (17 genes); and the native *A. niger* phosphate-switch phenotype,
+   asserted by hard check L7 — closing `EX_phos` collapses growth 18.95 -> 0
+   while citrate secretion capacity doubles 6.00 -> 12.00.
+5. **Citrate overflow is invisible under a biomass objective.** Solved with
+   biomass as the sole objective, `EX_cit` is exactly 0.0000 in both phosphate
+   phases (carbon-minimal knife-edge solution). The phenotype only appears when
+   citrate secretion is the objective subject to a growth floor. Any downstream
+   reuse of `phosphate_switch()` must keep that structure.
 
 ## Why this replaces iMA871
 `iMA871` (BioModels) ships `gene=0`, an artificial biomass sink, and a carbon
