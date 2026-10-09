@@ -119,26 +119,48 @@ def carbon_guardrail(model, biomass_id=None):
     return after.status, b1, drop, len(carb)
 
 
-def phosphate_switch(model, biomass_id=None):
+def phosphate_switch(model, biomass_id=None, growth_fraction=0.5):
     """Native A. niger phenotype: phosphate depletion routes carbon to citrate.
 
     Returns a dict with phase-1 (phosphate sufficient) and phase-2 (phosphate
-    depleted) biomass + citrate-secretion fluxes. On a well-posed CCM model,
-    closing EX_phos should drop growth and raise citrate secretion.
+    depleted) biomass + citrate-secretion fluxes.
+
+    IMPORTANT (measured, not stylistic): you cannot read citrate overflow off a
+    biomass-maximising FBA solution. With the biomass as the sole objective the
+    LP returns a carbon-minimal "knife-edge" solution and ``EX_cit`` is exactly
+    0.0000 in *both* phases -- a false negative that hides the phenotype
+    entirely. Citrate overflow is an alternative objective, so each phase here
+    is solved as: keep growth >= ``growth_fraction`` x (phase-1 maximum), then
+    maximise ``EX_cit``.
+
+    Measured on this curated model: citrate 6.0 -> 12.0 (2x) once EX_phos is
+    closed, with growth 18.95 -> 0.0.
     """
     bid = biomass_id or find_biomass(model)
-    # phase 1: phosphate sufficient
+
+    # phase 1: phosphate sufficient -- reference growth and citrate capacity
     m1 = model.copy()
     m1.objective = m1.reactions.get_by_id(bid)
-    s1 = m1.optimize()
-    g1 = float(s1.fluxes[bid]) if bid in s1.fluxes else 0.0
-    c1 = float(s1.fluxes["EX_cit"]) if "EX_cit" in s1.fluxes else 0.0
+    g1 = float(m1.optimize().fluxes[bid])
+    cit1 = _max_citrate(model, bid, min_growth=growth_fraction * g1)
+
     # phase 2: phosphate depleted (block extracellular phosphate uptake)
     m2 = model.copy()
     m2.reactions.EX_phos.lower_bound = 0.0
     m2.objective = m2.reactions.get_by_id(bid)
-    s2 = m2.optimize()
-    g2 = float(s2.fluxes[bid]) if bid in s2.fluxes else 0.0
-    c2 = float(s2.fluxes["EX_cit"]) if "EX_cit" in s2.fluxes else 0.0
-    return {"growth_sufficient": g1, "citrate_sufficient": c1,
-            "growth_depleted": g2, "citrate_depleted": c2}
+    g2 = float(m2.optimize().fluxes[bid])
+    cit2 = _max_citrate(m2, bid, min_growth=growth_fraction * g2)
+
+    return {"growth_sufficient": g1, "citrate_sufficient": cit1,
+            "growth_depleted": g2, "citrate_depleted": cit2}
+
+
+def _max_citrate(model, biomass_id, min_growth=0.0):
+    """Max EX_cit subject to growth >= ``min_growth``; returns citrate flux."""
+    m = model.copy()
+    m.reactions.get_by_id(biomass_id).lower_bound = max(0.0, min_growth)
+    m.objective = m.reactions.get_by_id("EX_cit")
+    sol = m.optimize()
+    if sol.status != "optimal":
+        return None
+    return float(sol.fluxes["EX_cit"])
