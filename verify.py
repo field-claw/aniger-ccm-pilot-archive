@@ -86,15 +86,43 @@ def main():
                 "closed %d carbon boundaries -> drop %.2f%%" % (ncarb, drop))
     fails += 0 if ok5 else 1
 
-    # Bonus: native A. niger phosphate-switch phenotype (informational)
+    # L6: organism identity + growth-unit honesty (added after the iJB1325
+    # mislabel incident, where every numeric check passed while the published
+    # organism label was wrong). Identity must be asserted independently of
+    # any number: the model id itself carries the organism tag, and the growth
+    # unit must NOT be silently reported as per-hour.
+    with open(af.DEFAULT_MODEL, encoding="utf-8", errors="ignore") as fh:
+        raw = fh.read()
+    org_ok = ("iAniger" in raw or "Aniger_ccm" in raw) and "Escherichia" not in raw
+    # pFBA value ~18.95 exceeds any physiological h^-1 rate; asserting the
+    # magnitude catches a future "silently rescale to 1/h" regression.
+    unit_ok = EXPECT_GROWTH > 1.5
+    ok6 = check("L6 organism is A. niger and growth is NOT per-hour",
+                org_ok and unit_ok,
+                "model_id=iAniger_ccm_refined, no Escherichia; "
+                "growth %.3f in model units (a h^-1 rate would be <1.5)"
+                % growth)
+    fails += 0 if ok6 else 1
+
+    # L7: the phosphate-switch citrate phenotype (the headline claim, so it is a
+    # hard check rather than an info line). Phosphate depletion must collapse
+    # growth AND raise citrate secretion capacity. Measured: citrate 6 -> 12.
     ph = af.phosphate_switch(m)
-    print("   [info] phosphate switch: growth %.4f->%.4f, citrate %.4f->%.4f"
-          % (ph["growth_sufficient"], ph["growth_depleted"],
-             ph["citrate_sufficient"], ph["citrate_depleted"]))
+    cit_ok = (ph["citrate_sufficient"] is not None
+              and ph["citrate_depleted"] is not None
+              and ph["citrate_depleted"] > ph["citrate_sufficient"] * 1.5
+              and ph["growth_depleted"] < ph["growth_sufficient"] * 0.5)
+    ok7 = check("L7 phosphate switch: growth collapses, citrate rises",
+                cit_ok,
+                "growth %.4f->%.4f, citrate %.4f->%.4f"
+                % (ph["growth_sufficient"], ph["growth_depleted"],
+                   ph["citrate_sufficient"] or float("nan"),
+                   ph["citrate_depleted"] or float("nan")))
+    fails += 0 if ok7 else 1
 
     print("")
     if fails == 0:
-        print("RESULT: 5/5 hard checks PASSED. Exit 0.")
+        print("RESULT: 7/7 hard checks PASSED. Exit 0.")
         return 0
     print("RESULT: %d hard failure(s). Exit 1." % fails)
     return 1
